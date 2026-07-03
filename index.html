@@ -16,6 +16,7 @@
     --ink:#f2ecdd;         /* off-white ink color for kana + text */
     --beni:#c8503f;        /* hanko vermillion (slightly brighter for dark bg) */
     --beni-dim:#8c2d22;
+    --midori:#4fae74;      /* green for correct-answer maru */
     --mist:#8f9bb3;        /* muted text on dark */
   }
 
@@ -65,6 +66,7 @@
   }
   .mode-switch{
     display:flex;
+    flex-wrap:wrap;
     gap:2px;
     background:var(--ai);
     border-radius:8px;
@@ -79,7 +81,7 @@
     background:none;
     border:none;
     border-radius:6px;
-    padding:7px 12px;
+    padding:7px 10px;
     cursor:pointer;
     transition:background 0.15s ease, color 0.15s ease;
   }
@@ -181,6 +183,7 @@
     opacity:0;
     filter:drop-shadow(0 2px 2px rgba(0,0,0,0.15));
   }
+  #maruPath{ stroke:var(--midori); }
   .mark.show-correct #maruPath{
     animation:draw 0.1s linear forwards;
   }
@@ -274,6 +277,106 @@
     .card-wrap{ width:220px; height:220px; }
     .kana{ font-size:118px; }
   }
+
+  /* ---------- cheat sheet ---------- */
+  .cheat-btn{
+    position:fixed;
+    right:20px;
+    bottom:20px;
+    width:34px;
+    height:34px;
+    border-radius:50%;
+    background:var(--ai);
+    border:1px solid var(--ai-edge);
+    color:var(--mist);
+    font-family:'JetBrains Mono', monospace;
+    font-size:15px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition:background 0.15s ease, color 0.15s ease;
+  }
+  .cheat-btn:hover{ background:var(--ai-edge); color:#eee6d3; }
+
+  .cheat-overlay{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(8,11,20,0.72);
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    z-index:50;
+  }
+  .cheat-overlay.open{ display:flex; }
+
+  .cheat-panel{
+    background:var(--ai);
+    border:1px solid var(--ai-edge);
+    border-radius:10px;
+    max-width:560px;
+    width:100%;
+    max-height:80vh;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .cheat-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:14px 18px;
+    border-bottom:1px solid var(--ai-edge);
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--mist);
+  }
+  .cheat-close{
+    background:none;
+    border:none;
+    color:var(--mist);
+    font-size:20px;
+    line-height:1;
+    cursor:pointer;
+    padding:2px 6px;
+  }
+  .cheat-close:hover{ color:#eee6d3; }
+
+  .cheat-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(64px, 1fr));
+    gap:6px;
+    padding:16px;
+    overflow-y:auto;
+  }
+  .cheat-cell{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+    padding:8px 4px;
+    border-radius:6px;
+    background:var(--yozora);
+    border:1px solid transparent;
+  }
+  .cheat-cell .ck{
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size:22px;
+    color:var(--ink);
+  }
+  .cheat-cell .cr{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px;
+    color:var(--mist);
+  }
+  .cheat-cell.current{
+    border-color:var(--beni);
+    background:rgba(200,80,63,0.15);
+  }
+  .cheat-cell.current .cr{ color:var(--beni); }
 </style>
 </head>
 <body>
@@ -284,6 +387,7 @@
     <div class="mode-switch" id="modeSwitch">
       <button class="mode-btn active" data-mode="hiragana" type="button">hiragana</button>
       <button class="mode-btn" data-mode="katakana" type="button">katakana</button>
+      <button class="mode-btn" data-mode="korean" type="button">korean</button>
     </div>
   </div>
 
@@ -301,7 +405,7 @@
 
     <div class="answer-row">
       <input id="input" type="text" maxlength="3" autocomplete="off" autocapitalize="off" spellcheck="false" autofocus />
-      <div class="hint" id="hint">type the sound</div>
+      <div class="hint" id="hint">type the romanization</div>
     </div>
   </div>
 
@@ -320,6 +424,18 @@
     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
   </div>
   <button class="reset-link" id="resetBtn">reset progress</button>
+</div>
+
+<button class="cheat-btn" id="cheatBtn" title="cheat sheet" type="button">?</button>
+
+<div class="cheat-overlay" id="cheatOverlay">
+  <div class="cheat-panel">
+    <div class="cheat-header">
+      <span>cheat sheet</span>
+      <button class="cheat-close" id="cheatClose" type="button" aria-label="close">&times;</button>
+    </div>
+    <div class="cheat-grid" id="cheatGrid"></div>
+  </div>
 </div>
 
 <script>
@@ -362,7 +478,19 @@
     {k:'ン',r:'n'}
   ];
 
-  const DATASETS = { hiragana: HIRAGANA, katakana: KATAKANA };
+  const KOREAN = [
+    {k:'ㄱ',r:'g'},{k:'ㄴ',r:'n'},{k:'ㄷ',r:'d'},{k:'ㄹ',r:'r'},{k:'ㅁ',r:'m'},
+    {k:'ㅂ',r:'b'},{k:'ㅅ',r:'s'},{k:'ㅇ',r:'ng'},{k:'ㅈ',r:'j'},{k:'ㅊ',r:'ch'},
+    {k:'ㅋ',r:'k'},{k:'ㅌ',r:'t'},{k:'ㅍ',r:'p'},{k:'ㅎ',r:'h'},
+    {k:'ㄲ',r:'kk'},{k:'ㄸ',r:'tt'},{k:'ㅃ',r:'pp'},{k:'ㅆ',r:'ss'},{k:'ㅉ',r:'jj'},
+    {k:'ㅏ',r:'a'},{k:'ㅑ',r:'ya'},{k:'ㅓ',r:'eo'},{k:'ㅕ',r:'yeo'},{k:'ㅗ',r:'o'},
+    {k:'ㅛ',r:'yo'},{k:'ㅜ',r:'u'},{k:'ㅠ',r:'yu'},{k:'ㅡ',r:'eu'},{k:'ㅣ',r:'i'},
+    {k:'ㅐ',r:'ae'},{k:'ㅒ',r:'yae'},{k:'ㅔ',r:'e'},{k:'ㅖ',r:'ye'},{k:'ㅘ',r:'wa'},
+    {k:'ㅙ',r:'wae'},{k:'ㅚ',r:'oe'},{k:'ㅝ',r:'wo'},{k:'ㅞ',r:'we'},{k:'ㅟ',r:'wi'},
+    {k:'ㅢ',r:'ui'}
+  ];
+
+  const DATASETS = { hiragana: HIRAGANA, katakana: KATAKANA, korean: KOREAN };
   let mode = 'hiragana';
 
   const el = {
@@ -378,6 +506,10 @@
     masteredVal: document.getElementById('masteredVal'),
     resetBtn: document.getElementById('resetBtn'),
     modeSwitch: document.getElementById('modeSwitch'),
+    cheatBtn: document.getElementById('cheatBtn'),
+    cheatOverlay: document.getElementById('cheatOverlay'),
+    cheatClose: document.getElementById('cheatClose'),
+    cheatGrid: document.getElementById('cheatGrid'),
   };
 
   let mastered = new Set();
@@ -427,7 +559,7 @@
     el.mark.classList.remove('show-correct', 'show-wrong');
     el.input.value = '';
     el.input.blur();
-    el.hint.textContent = 'all ' + activeSet().length + ' mastered — reset to practice again';
+    el.hint.textContent = 'all ' + activeSet().length + ' mastered — press space to reset';
     el.hint.className = 'hint ok';
   }
 
@@ -448,7 +580,7 @@
     });
     el.input.value = '';
     el.input.classList.remove('wrong-flash');
-    el.hint.textContent = 'type the sound';
+    el.hint.textContent = 'type the romanization';
     el.hint.className = 'hint';
     if(animate){
       el.card.classList.remove('enter');
@@ -538,6 +670,46 @@
     resetState();
     updateStats();
     showCard(pickNext(), true);
+  });
+
+  function renderCheatSheet(){
+    el.cheatGrid.innerHTML = '';
+    activeSet().forEach(h => {
+      const cell = document.createElement('div');
+      cell.className = 'cheat-cell' + (current && current.k === h.k ? ' current' : '');
+      cell.innerHTML = '<span class="ck">' + h.k + '</span><span class="cr">' + h.r + '</span>';
+      el.cheatGrid.appendChild(cell);
+    });
+  }
+
+  function openCheatSheet(){
+    streak = 0;
+    updateStats();
+    renderCheatSheet();
+    el.cheatOverlay.classList.add('open');
+  }
+
+  function closeCheatSheet(){
+    el.cheatOverlay.classList.remove('open');
+  }
+
+  el.cheatBtn.addEventListener('click', openCheatSheet);
+  el.cheatClose.addEventListener('click', closeCheatSheet);
+  el.cheatOverlay.addEventListener('click', (e) => {
+    if(e.target === el.cheatOverlay) closeCheatSheet();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape' && el.cheatOverlay.classList.contains('open')){
+      closeCheatSheet();
+      return;
+    }
+    if((e.code === 'Space' || e.key === ' ') && !current && !el.cheatOverlay.classList.contains('open')){
+      e.preventDefault();
+      resetState();
+      updateStats();
+      nextCard();
+    }
   });
 
   resetState();
